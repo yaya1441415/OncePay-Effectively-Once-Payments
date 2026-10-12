@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Level 3 - idempotent payment processor
+
+
+Resources:
+  DataKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: Encrypts payment data at rest
+      EnableKeyRotation: true
+      PendingWindowInDays: 7 # if someone delete this, wait 7 days
+      KeyPolicy:  #who may use or manage this key 
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccountIamPolicies #statement ID
+            Effect: Allow
+            Principal: 
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'   
+  DataKeyAlias: 
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/payments-data #always start with alias
+      TargetKeyId: !Ref DataKey
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: transactionId
+          AttributeType: S
+        - AttributeName: openShard
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: transactionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: OpenTransactions
+          KeySchema:
+            - AttributeName: openShard
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection: # wich attributes gets copied into th index
+            ProjectionType: ALL
+      SSESpecification: # SSE serverside encryption, encrypts the data at rest using kms key
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref DataKey
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  AccountsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: accountId
+          AttributeType: S
+        - AttributeName: ownerId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: accountId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ByOwner
+          KeySchema:
+            - AttributeName: ownerId        
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      SSESpecification: # SSE serverside encryption, encrypts the data at rest using kms key
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref DataKey
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  LedgerTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: transactionId
+          AttributeType: S
+        - AttributeName: entryId
+          AttributeType: S
+        - AttributeName: accountId
+          AttributeType: S
+        - AttributeName: postedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: transactionId
+          KeyType: HASH
+        - AttributeName: entryId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ByAccount
+          KeySchema:
+            - AttributeName: accountId
+              KeyType: HASH
+            - AttributeName: postedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification: # SSE serverside encryption, encrypts the data at rest using kms key
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref DataKey
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+  ProcessedEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: eventId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: eventId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiration
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !Ref DataKey
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      
+Outputs:
+  TransactionsTableName:
+    Value: !Ref TransactionsTable
+  AccountsTableName:
+    Value: !Ref AccountsTable
+  LedgerTableName:
+    Value: !Ref LedgerTable
+  ProcessedEventsTableName:
+    Value: !Ref ProcessedEventsTable
