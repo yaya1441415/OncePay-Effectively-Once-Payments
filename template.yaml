@@ -129,8 +129,44 @@ Resources:
         SSEType: KMS
         KMSMasterKeyId: !Ref DataKey
       PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
-      
+        PointInTimeRecoveryEnabled: true   
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${AWS::StackName}-users
+      UsernameAttributes:
+        - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true #nobody can sign themself up only admin creates user 
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: payments-api-client
+      GenerateSecret: false
+      ExplicitAuthFlows: # list way app is allowed to log in
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_USER_SRP_AUTH #SECURE REMOTE PASSWORD
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
 Outputs:
   TransactionsTableName:
     Value: !Ref TransactionsTable
@@ -140,3 +176,7 @@ Outputs:
     Value: !Ref LedgerTable
   ProcessedEventsTableName:
     Value: !Ref ProcessedEventsTable
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient

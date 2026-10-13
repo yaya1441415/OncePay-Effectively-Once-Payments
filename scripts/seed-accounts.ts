@@ -7,10 +7,16 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'ca-central
 
 const SYSTEM_ACCOUNT = 'sys-opening-balances';
 
-const accounts = [
-    {accountId: 'acc-checking', openingCents: 100000 },
-    { accountId: 'acc-savings', openingCents: 50000 },   // $500.0
-]
+
+
+//makes the seed re-runnable for any test user. 
+function accountsFor(ownerId: string){
+    const prefix = ownerId.slice(0, 8);
+    return [
+        { accountId: `acc-${prefix}-checking`, openingCents: 100000 }, // $1,000.00
+        { accountId: `acc-${prefix}-savings`, openingCents: 50000 },   // $500.00
+    ]
+}
 
 async function  seedAccount(
     accountsTable: string,
@@ -69,7 +75,7 @@ async function main() {
         process.exit(1);
     }
 
-    for (const {accountId, openingCents } of accounts) {
+    for (const {accountId, openingCents } of accountsFor(ownerId)) {
         try {
             await seedAccount(accountsTable, ledgerTable, ownerId, accountId, openingCents);
             console.log(`Created ${accountId} with ${openingCents} cents`);
