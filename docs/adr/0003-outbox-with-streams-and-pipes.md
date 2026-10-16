@@ -17,4 +17,4 @@ A DynamoDB Stream captures the new item, and an EventBridge Pipe forwards new PE
 + The Pipe filters events, so only new PENDING transactions are forwarded
 - Two more services to understand and monitor (the stream and the Pipe)
 - Stream records can be delivered more than once, so every later hop must be idempotent (it already is by design)
-- Stream records are kept for 24 hours; a Pipe stopped for longer than that would miss transactions (detected by the reconciliation job)
+- Stream records are kept for 24 hours; a Pipe stopped for longer than that would miss transactions (the stuck-transaction sweeper finds transactions still PENDING in the OpenTransactions index and re-queues them; it is a core component, not a stretch one, because invariant 4 depends on it)

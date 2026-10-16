@@ -28,7 +28,6 @@ async function main() {
             } as unknown as APIGatewayProxyEvent;
             const res = await handler(event)
             console.log(`\n${label}\n  ${res.statusCode} ${res.body}  ${JSON.stringify(res.headers)}`)
-
         }
     await call('1. New transfer', key, { fromAccountId: mine, toAccountId: myOther, amountCents: 2500 });
     await call('2. Same key, same body (a retry)', key, { fromAccountId: mine, toAccountId: myOther, amountCents: 2500 });

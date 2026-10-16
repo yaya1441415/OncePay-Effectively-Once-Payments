@@ -24,4 +24,5 @@ Behaviour:
 + No 409 "in progress" state is needed, because there is no in-progress state
 - Keys never expire: a client reusing a key months later receives the old transaction (documented behaviour)
 - Response replay and payload checks are written by hand instead of coming from a library
-- Events (EventBridge, Stripe webhooks) still need deduplication by event ID, handled by the ProcessedEvents table with a 24-hour TTL
+- Events (EventBridge, Stripe webhooks) still need deduplication by event ID, handled by the ProcessedEvents table. Its TTL is 7 days, not 24 hours: Stripe retries webhooks for up to 3 days and EventBridge retries for up to 24 hours, so a shorter TTL would let a late retry through. The TTL attribute holds epoch seconds as a Number, and readers compare it to the current time because DynamoDB deletes expired items lazily.
+- ProcessedEvents is only a shortcut. It is written separately from the effect, so the effect itself (the ledger conditional put keyed by transactionId) must be idempotent. For a deposit, the transactionId is derived from the Stripe PaymentIntent ID.

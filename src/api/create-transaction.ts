@@ -60,10 +60,6 @@ async function createTransaction(event: APIGatewayProxyEvent): Promise<APIGatewa
         return reply(422, { message: 'Destination account not found' });
     }
 
-    //Prevent OverDraw
-    // if (from.balanceCents > req.amountCents) {
-    //     return reply(422, {message: 'Insuficient Funds'})
-    // }
 
     const transactionId = transactionIdFor(userId, key);
     const payloadHash = payloadHashFor(req.fromAccountId, req.toAccountId, req.amountCents);
@@ -144,6 +140,7 @@ function toResponse(item: Record<string, unknown>) {
 function parseBody(body: string | null): TransferRequest | undefined {
   let data: unknown;
   try { data = JSON.parse(body ?? ''); } catch { return undefined; }
+  if (typeof data !== 'object' || data === null) return undefined
   const r = data as Partial<TransferRequest>;
   const validId = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 64;
   if (!validId(r.fromAccountId) || !validId(r.toAccountId)) return undefined;
