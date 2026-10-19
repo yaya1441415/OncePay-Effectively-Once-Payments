@@ -16,6 +16,14 @@ Globals:
 Resources:
   CreateTransactionFunction:
     Type: AWS::Serverless::Function
+    Metadata: #tells sam to compile ts to js
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [api/create-transaction.ts]
+        Target: es2022
+        Format: cjs
+        Minify: false
+        Sourcemap: true
     Properties:
       CodeUri: src/
       Handler: create-transaction.handler
@@ -48,15 +56,6 @@ Resources:
               Required: true
               ValidateBody: true
               ValidateParameters: true
-    Metadata:
-      BuildMethod: esbuild
-      BuildProperties:
-        Minify: true
-        Target: es2022
-        Sourcemap: true
-        EntryPoints:
-          - api/create-transaction.ts
-
   PaymentsApi:
     Type: AWS::Serverless::Api
     Properties:
