@@ -14,6 +14,37 @@ Globals:
         ACCOUNTS_TABLE: !Ref AccountsTable
         NODE_OPTIONS: --enable-source-maps
 Resources:
+  GetTransactionFunction:
+    Type: AWS::Serverless::Function
+    Metadata: 
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [api/get-transaction.ts]
+        Target: es2022
+        Format: cjs
+        Minify: false
+        Sourcemap: true
+    Properties:
+      CodeUri: src/
+      Handler: get-transaction.handler
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action: dynamodb:GetItem
+            Resource: !GetAtt TransactionsTable.Arn
+          - Effect: Allow
+            Action: [kms:Decrypt, kms:DescribeKey]
+            Resource: !GetAtt DataKey.Arn
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub dynamodb.${AWS::Region}.amazonaws.com
+      Events:
+        GetTransaction:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PaymentsApi
+            Path: /transactions/{id}
+            Method: get
   CreateTransactionFunction:
     Type: AWS::Serverless::Function
     Metadata: #tells sam to compile ts to js
@@ -78,9 +109,18 @@ Resources:
           required: [fromAccountId, toAccountId, amountCents]
           additionalProperties: false
           properties:
-            fromAccountId: { type: string, minLength: 1, maxLength: 64 }
-            toAccountId: { type: string, minLength: 1, maxLength: 64 }
-            amountCents: { type: integer, minimum: 1, maximum: 1000000 }
+            fromAccountId:
+              type: string,
+              minLength: 1, 
+              maxLength: 64 
+            toAccountId:  
+              type: string, 
+              minLength: 1, 
+              maxLength: 64 
+            amountCents: 
+              type: integer, 
+              minimum: 1, 
+              maximum: 1000000 
   DataKey:
     Type: AWS::KMS::Key
     Properties:

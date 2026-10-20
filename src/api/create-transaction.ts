@@ -39,6 +39,9 @@ export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayPr
 async function createTransaction(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
     const userId = event.requestContext.authorizer?.claims?.sub; // who is calling ?
     if (typeof userId!=='string' || !userId) return reply(401, { message: 'Unauthorized' });
+    
+    const tokenUse = event.requestContext.authorizer?.claims?.token_use;
+    if(tokenUse !== 'access') return reply(401, {message: 'Unauthorized'})
 
     const key = header(event, 'idempotency-key'); //reads the idempotency header
     if (!key || !KEY_PATTERN.test(key)) { //isn t text or empty
