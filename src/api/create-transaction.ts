@@ -141,13 +141,20 @@ function toResponse(item: Record<string, unknown>) {
 }
 
 function parseBody(body: string | null): TransferRequest | undefined {
-  let data: unknown;
-  try { data = JSON.parse(body ?? ''); } catch { return undefined; }
-  if (typeof data !== 'object' || data === null) return undefined
-  const r = data as Partial<TransferRequest>;
-  const validId = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 64;
-  if (!validId(r.fromAccountId) || !validId(r.toAccountId)) return undefined;
-  if (r.fromAccountId === r.toAccountId) return undefined;
-  if (!Number.isInteger(r.amountCents) || r.amountCents! < 1 || r.amountCents! > MAX_AMOUNT_CENTS) return undefined;
-  return r as TransferRequest;
+    let data: unknown;
+    try { data = JSON.parse(body ?? ''); } catch { return undefined; }
+
+    if (typeof data !== 'object' || data === null) return undefined
+
+    const r = data as Partial<TransferRequest>;
+
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) return undefined;
+    const allowed = ['fromAccountId', 'toAccountId', 'amountCents'];
+    if (Object.keys(data).some((k) => !allowed.includes(k))) return undefined;
+    
+    const validId = (v: unknown) => typeof v === 'string' && v.length > 0 && v.length <= 64;
+    if (!validId(r.fromAccountId) || !validId(r.toAccountId)) return undefined;
+    if (r.fromAccountId === r.toAccountId) return undefined;
+    if (!Number.isInteger(r.amountCents) || r.amountCents! < 1 || r.amountCents! > MAX_AMOUNT_CENTS) return undefined;
+    return r as TransferRequest;
 }

@@ -16,7 +16,7 @@ Globals:
 Resources:
   GetTransactionFunction:
     Type: AWS::Serverless::Function
-    Metadata: 
+    Metadata:  #how to build 
       BuildMethod: esbuild
       BuildProperties:
         EntryPoints: [api/get-transaction.ts]
@@ -83,7 +83,7 @@ Resources:
               - method.request.header.Idempotency-Key:
                   Required: true
             RequestModel:
-              Model: TransferRequest
+              Model: transferRequest
               Required: true
               ValidateBody: true
               ValidateParameters: true
@@ -104,22 +104,22 @@ Resources:
           ThrottlingRateLimit: 20
           ThrottlingBurstLimit: 40
       Models:
-        TransferRequest:
+        transferRequest:
           type: object
           required: [fromAccountId, toAccountId, amountCents]
           additionalProperties: false
           properties:
             fromAccountId:
-              type: string,
-              minLength: 1, 
+              type: string
+              minLength: 1
               maxLength: 64 
             toAccountId:  
-              type: string, 
-              minLength: 1, 
+              type: string 
+              minLength: 1 
               maxLength: 64 
             amountCents: 
-              type: integer, 
-              minimum: 1, 
+              type: integer
+              minimum: 1
               maximum: 1000000 
   DataKey:
     Type: AWS::KMS::Key
