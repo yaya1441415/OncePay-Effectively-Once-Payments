@@ -13,7 +13,117 @@ Globals:
         TRANSACTIONS_TABLE: !Ref TransactionsTable
         ACCOUNTS_TABLE: !Ref AccountsTable
         NODE_OPTIONS: --enable-source-maps
+        LEDGER_TABLE: !Ref LedgerTable
 Resources:
+  ProcessTransactionFunction:
+    Type: AWS::Serverless::Function
+    Metadata: #sam uses it 
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [processor/process-transaction.ts]
+        Target: es2022
+        Format: cjs
+        Minify: false
+        Sourcemap: true
+    Properties:
+      CodeUri: src/
+      Handler: process-transaction.handler
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action: dynamodb:GetItem
+            Resource: [!GetAtt TransactionsTable.Arn, !GetAtt AccountsTable.Arn]
+          - Effect: Allow
+            Action: [dynamodb:UpdateItem, dynamodb:ConditionCheckItem]
+            Resource: [!GetAtt TransactionsTable.Arn, !GetAtt AccountsTable.Arn]
+          - Effect: Allow
+            Action: dynamodb:PutItem
+            Resource: !GetAtt LedgerTable.Arn
+          - Effect: Allow
+            Action: [kms:Decrypt, kms:DescribeKey, kms:GenerateDataKey]
+            Resource: !GetAtt DataKey.Arn
+            Condition:
+              StringEquals:
+                kms:ViaService: #limits how your lambda's role is allowed to use the KMS key
+                  - !Sub dynamodb.${AWS::Region}.amazonaws.com
+                  - !Sub sqs.${AWS::Region}.amazonaws.com
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TransactionsQueue.Arn #WHich queue to read from
+            BatchSize: 10  #up to 10 messages per invocation
+            FunctionResponseTypes: [ReportBatchItemFailures]
+            ScalingConfig: 
+              MaximumConcurrency: 2  #at most 2 copies of the functionat once
+  TransactionsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref DataKey
+      KmsDataKeyReusePeriodSeconds: 300
+      MessageRetentionPeriod: 1209600
+  OutboxPipeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: pipes.amazonaws.com # only the EventBridge Pipes service can use this role
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId 
+      Policies:
+        - PolicyName: outbox-pipe
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:DescribeStream
+                  - dynamodb:GetRecords
+                  - dynamodb:GetShardIterator
+                  - dynamodb:ListStreams
+                Resource: !GetAtt TransactionsTable.StreamArn
+              - Effect: Allow
+                Action: sqs:SendMessage
+                Resource: !GetAtt TransactionsQueue.Arn
+              - Effect: Allow
+                Action: [kms:Decrypt, kms:GenerateDataKey]
+                Resource: !GetAtt DataKey.Arn
+                Condition: 
+                  StringEquals:
+                    kms:ViaService: #key must be used only when the request comes through sqs or dynamodb
+                      - !Sub dynamodb.${AWS::Region}.amazonaws.com
+                      - !Sub sqs.${AWS::Region}.amazonaws.com
+  OutboxPipe:
+    Type: AWS::Pipes::Pipe
+    Properties:
+      RoleArn: !GetAtt OutboxPipeRole.Arn
+      Source: !GetAtt TransactionsTable.StreamArn #where data omes from
+      SourceParameters:
+        DynamoDBStreamParameters:
+          StartingPosition: LATEST
+          BatchSize: 10
+        FilterCriteria:
+          Filters: #only care about records with:
+            - Pattern: '{"eventName": ["INSERT"], "dynamodb": {"NewImage": {"status": {"S": ["PENDING"]}}}}'
+      Target: !GetAtt TransactionsQueue.Arn
+      TargetParameters:
+        InputTemplate: '{"transactionId": "<$.dynamodb.NewImage.transactionId.S>"}'
+  TransactionsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      KmsMasterKeyId: !Ref DataKey #encrypts messages wth your key
+      KmsDataKeyReusePeriodSeconds: 300 #sqs reuse key for 5 minlow cost
+      MessageRetentionPeriod: 1209600 #keeps unprocessed mssg for 14 days.
+      VisibilityTimeout: 60 #how long message stays hidden after read
+      ReceiveMessageWaitTimeSeconds: 20 #Long Polling
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt TransactionsDLQ.Arn
+        maxReceiveCount: 5
   GetTransactionFunction:
     Type: AWS::Serverless::Function
     Metadata:  #how to build 
@@ -144,6 +254,8 @@ Resources:
   TransactionsTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE #each record conatins the item as it is after teh change
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: transactionId
@@ -299,3 +411,5 @@ Outputs:
     Value: !Ref UserPoolClient
   ApiUrl:
     Value: !Sub https://${PaymentsApi}.execute-api.${AWS::Region}.amazonaws.com/dev
+  TransactionsQueueUrl:
+    Value: !Ref TransactionsQueue
