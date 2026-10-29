@@ -10,8 +10,17 @@ const SYSTEM_ACCOUNT = 'sys-opening-balances';
 
 
 //makes the seed re-runnable for any test user. 
-function accountsFor(ownerId: string){
+function accountsFor(ownerId: string, label?: string){
     const prefix = ownerId.slice(0, 8);
+    if(label) {
+        if (!/^[a-z0-9]{1,16}$/.test(label)) {
+            throw new Error('Label must be 1-16 lowercase letters or digits');
+        }
+        return[
+            { accountId: `acc-${prefix}-${label}-a`, openingCents: 10000 }, // $100.00
+            { accountId: `acc-${prefix}-${label}-b`, openingCents: 10000 }, // $100.00
+        ];
+    }
     return [
         { accountId: `acc-${prefix}-checking`, openingCents: 100000 }, // $1,000.00
         { accountId: `acc-${prefix}-savings`, openingCents: 50000 },   // $500.00
@@ -69,13 +78,13 @@ async function  seedAccount(
 }
 
 async function main() {
-    const [accountsTable, ledgerTable, ownerId] = process.argv.slice(2);
+    const [accountsTable, ledgerTable, ownerId, label] = process.argv.slice(2);
     if (!accountsTable || !ledgerTable || !ownerId) {
         console.error('Usage: npx tsx scripts/seed-accounts.ts <AccountsTable> <LedgerTable> <ownerId>');
         process.exit(1);
     }
 
-    for (const {accountId, openingCents } of accountsFor(ownerId)) {
+    for (const {accountId, openingCents } of accountsFor(ownerId, label)) {
         try {
             await seedAccount(accountsTable, ledgerTable, ownerId, accountId, openingCents);
             console.log(`Created ${accountId} with ${openingCents} cents`);
