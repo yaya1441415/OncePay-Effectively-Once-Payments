@@ -25,43 +25,42 @@ const AMOUNT = 3000; // 30.00
 const SETTLE_TIMEOUT_MS = 60_000;
 
 async function  main(): Promise<void> {
-    const label = process.argv[2]
-    if(!label) throw new Error('Usage: npx tsx scripts/race-double-spend.ts <label>')
+  const label = process.argv[2]
+  if(!label) throw new Error('Usage: npx tsx scripts/race-double-spend.ts <label>')
 
-    const token = await login()
-    const prefix = subOf(token).slice(0, 8);
-    const from = `acc-${prefix}-${label}-a`;
-    const to = `acc-${prefix}-${label}-b`;
+  const token = await login()
+  const prefix = subOf(token).slice(0, 8);
+  const from = `acc-${prefix}-${label}-a`;
+  const to = `acc-${prefix}-${label}-b`;
 
-    const startFrom = await balanceOf(from);
-    const startTo = await balanceOf(to);
-    const expectedCompleted = Math.min(TRANSFERS, Math.floor(startFrom / AMOUNT));
-    console.log(`Start: ${from}=${startFrom}  ${to}=${startTo}`);
-    console.log(`Sending ${TRANSFERS} transfers of ${AMOUNT} at the same time...`);
+  const startFrom = await balanceOf(from);
+  const startTo = await balanceOf(to);
+  const expectedCompleted = Math.min(TRANSFERS, Math.floor(startFrom / AMOUNT));
+  console.log(`Start: ${from}=${startFrom}  ${to}=${startTo}`);
+  console.log(`Sending ${TRANSFERS} transfers of ${AMOUNT} at the same time...`);
 
-    const ids = await Promise.all(
-        Array.from({length: TRANSFERS}, () => createTransfer(token, from, to, AMOUNT))
+  const ids = await Promise.all(
+    Array.from({length: TRANSFERS}, () => createTransfer(token, from, to, AMOUNT))
+  );
 
-    );
+  //wait until every transfer has final outcome.
+  const outcomes = await Promise.all(ids.map((id) => waitForSettled(token, id)))
+  const completed = outcomes.filter((s) => s === 'COMPLETED').length;
+  const failed = outcomes.filter((s) => s === 'FAILED').length;
 
-    //wait until every transfer has final outcome.
-    const outcomes = await Promise.all(ids.map((id) => waitForSettled(token, id)))
-    const completed = outcomes.filter((s) => s === 'COMPLETED').length;
-    const failed = outcomes.filter((s) => s === 'FAILED').length;
+  const endFrom = await balanceOf(from);
+  const endTo = await balanceOf(to);
+  console.log(`Outcomes: ${completed} COMPLETED, ${failed} FAILED`);
+  console.log(`End:   ${from}=${endFrom}  ${to}=${endTo}`);
 
-    const endFrom = await balanceOf(from);
-    const endTo = await balanceOf(to);
-    console.log(`Outcomes: ${completed} COMPLETED, ${failed} FAILED`);
-    console.log(`End:   ${from}=${endFrom}  ${to}=${endTo}`);
-
-    const checks: Array<[string, boolean]> = [
-        [`exactly ${expectedCompleted} completed`, completed === expectedCompleted],
-        [`exactly ${TRANSFERS - expectedCompleted} failed`, failed === TRANSFERS - expectedCompleted],
-        ['sender never negative', endFrom >= 0],
-        ['sender lost exactly the completed amount', startFrom - endFrom === completed * AMOUNT],
-        ['receiver gained exactly the completed amount', endTo - startTo === completed * AMOUNT],
-    ];
-    for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+  const checks: Array<[string, boolean]> = [
+      [`exactly ${expectedCompleted} completed`, completed === expectedCompleted],
+      [`exactly ${TRANSFERS - expectedCompleted} failed`, failed === TRANSFERS - expectedCompleted],
+      ['sender never negative', endFrom >= 0],
+      ['sender lost exactly the completed amount', startFrom - endFrom === completed * AMOUNT],
+      ['receiver gained exactly the completed amount', endTo - startTo === completed * AMOUNT],
+  ];
+  for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
   process.exitCode = checks.every(([, ok]) => ok) ? 0 : 1;    
 }
 
@@ -84,17 +83,18 @@ function subOf(token: string):string {
 }
 
 async function createTransfer(token:string, from: string, to: string, amountCents: number): Promise<string> {
-    const res = await fetch(`${API_URL}/transactions`, {
+  const res = await fetch(`${API_URL}/transactions`, {
     method: 'POST',
     headers: {
       Authorization: token,
       'Content-Type': 'application/json',
-      'Idempotency-Key': `race-${randomUUID()}`,
+      'Idempotency-Key': `race-${randomUUID()}`, //every request is treated as a different payment.
     },
-        body: JSON.stringify({ fromAccountId: from, toAccountId: to, amountCents }),
-    });
-    if (res.status !== 202) throw new Error(`POST returned ${res.status}: ${await res.text()}`);
-    return ((await res.json()) as { transactionId: string }).transactionId;    
+    body: JSON.stringify({ fromAccountId: from, toAccountId: to, amountCents }),
+  });
+
+  if (res.status !== 202) throw new Error(`POST returned ${res.status}: ${await res.text()}`);
+  return ((await res.json()) as { transactionId: string }).transactionId;    
 }
 
 async function waitForSettled(token: string, id: string): Promise<string> {

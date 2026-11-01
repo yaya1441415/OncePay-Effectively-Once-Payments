@@ -7,6 +7,13 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
 import { SQSClient, SendMessageCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
 
+//One transfer A send 10.00 to B, it status is pending
+//The message reaches the queue more than once
+//
+
+
+
+
 const REGION = process.env.AWS_REGION ?? 'ca-central-1';
 const API_URL = env('API_URL');
 const CLIENT_ID = env('CLIENT_ID');
