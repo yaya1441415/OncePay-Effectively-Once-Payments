@@ -15,6 +15,89 @@ Globals:
         NODE_OPTIONS: --enable-source-maps
         LEDGER_TABLE: !Ref LedgerTable
 Resources:
+  SettledEventsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/events/${AWS::StackName}-settled
+      RetentionInDays: 7
+  EventsToLogsPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: !Sub ${AWS::StackName}-events-to-logs
+      PolicyDocument: !Sub >-
+        {"Version": "2012-10-17", "Statement": [{"Effect": "Allow",
+        "Principal": {"Service": ["events.amazonaws.com", "delivery.logs.amazonaws.com"]},
+        "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+        "Resource": "${SettledEventsLogGroup.Arn}"}]}
+  SettledDebugRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !Ref PaymentsEventBus
+      EventPattern:
+        source: [payments.transfers]
+        detail-type: [TransferSettled]
+      Targets:
+        - Id: debug-log
+          Arn: !GetAtt SettledEventsLogGroup.Arn
+  SettledPipe:
+    Type: AWS::Pipes::Pipe
+    Properties:
+      RoleArn: !GetAtt SettledPipeRole.Arn
+      Source: !GetAtt TransactionsTable.StreamArn
+      SourceParameters:
+        DynamoDBStreamParameters:
+          StartingPosition: LATEST
+          BatchSize: 10
+        FilterCriteria:
+          Filters:
+            - Pattern: '{"eventName": ["MODIFY"], "dynamodb": {"NewImage": {"status": {"S": ["COMPLETED", "FAILED"]}}}}'
+      Target: !GetAtt PaymentsEventBus.Arn
+      TargetParameters:
+        EventBridgeEventBusParameters:
+          Source: payments.transfers
+          DetailType: TransferSettled
+        InputTemplate: >-
+          {"eventId": "<$.dynamodb.NewImage.transactionId.S>#<$.dynamodb.NewImage.status.S>",
+          "transactionId": "<$.dynamodb.NewImage.transactionId.S>",
+          "status": "<$.dynamodb.NewImage.status.S>",
+          "ownerId": "<$.dynamodb.NewImage.ownerId.S>",
+          "fromAccountId": "<$.dynamodb.NewImage.fromAccountId.S>",
+          "toAccountId": "<$.dynamodb.NewImage.toAccountId.S>",
+          "amountCents": "<$.dynamodb.NewImage.amountCents.N>",
+          "currency": "<$.dynamodb.NewImage.currency.S>",
+          "settledAt": "<$.dynamodb.NewImage.settledAt.S>"}
+  PaymentsEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub ${AWS::StackName}-payments
+  SettledPipeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: #who can wear this badge
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: pipes.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId } #pipe in your account
+      Policies:
+        - PolicyName: settled-pipe
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:DescribeStream, dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:ListStreams]
+                Resource: !GetAtt TransactionsTable.StreamArn
+              - Effect: Allow
+                Action: Events:PutEvents
+                Resource: !GetAtt PaymentsEventBus.Arn
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !GetAtt DataKey.Arn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub dynamodb.${AWS::Region}.amazonaws.com
   ProcessTransactionFunction:
     Type: AWS::Serverless::Function
     Metadata: #sam uses it 
