@@ -73,7 +73,17 @@ async function main(): Promise<void> {
     const endTo = await balanceOf(to);
     console.log(`Transfer ${id} → ${status}, ledger rows: ${rows}`);
     console.log(`End:   ${from}=${endFrom}  ${to}=${endTo}`);
-
+    const checks: Array<[string, boolean]> = [
+    ['all responses 202', results.every((r) => r.status === 202)],
+    ['all responses carry the same transactionId', ids.size === 1],
+    ['exactly 1 response was not a replay', results.filter((r) => !r.replayed).length === 1],
+    ['transfer COMPLETED', status === 'COMPLETED'],
+    ['exactly 2 ledger rows', rows === 2],
+    [`sender lost exactly ${AMOUNT}`, startFrom - endFrom === AMOUNT],
+    [`receiver gained exactly ${AMOUNT}`, endTo - startTo === AMOUNT],
+  ];
+  for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}`);
+  process.exitCode = checks.every(([, ok]) => ok) ? 0 : 1;
 }
 
 async function login(): Promise<string> {
@@ -182,6 +192,6 @@ async function waitForQueueEmpty(): Promise<void> {
 
 
 main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1
+  console.error(error);
+  process.exitCode = 1
 })
