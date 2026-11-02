@@ -15,6 +15,81 @@ Globals:
         NODE_OPTIONS: --enable-source-maps
         LEDGER_TABLE: !Ref LedgerTable
 Resources:
+  AuditFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [consumers/audit.ts]
+        Target: es2022
+        Format: cjs
+        Minify: false
+        Sourcemap: true
+    Properties:
+      CodeUri: src/
+      Handler: audit.handler
+      Environment:
+        Variables:
+          AUDIT_BUCKET: !Ref AuditBucket
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action: s3:PutObject
+            Resource: !Sub '${AuditBucket.Arn}/audit/*'
+          - Effect: Allow
+            Action: kms:GenerateDataKey
+            Resource: !GetAtt DataKey.Arn
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub s3.${AWS::Region}.amazonaws.com
+      Events:
+        Settled:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref PaymentsEventBus
+            Pattern:
+              source: [payments.transfers]
+              detail-type: [TransferSettled]
+  AuditBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AuditBucket
+      PolicyDocument: #refuse any request that is not encrypted on its way over the network 
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource: [!GetAtt AuditBucket.Arn, !Sub '${AuditBucket.Arn}/*']
+            Condition:
+              Bool: { aws:SecureTransport: 'false' }
+  AuditBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: COMPLIANCE
+            Days: 1
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt DataKey.Arn
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration: #bucket doesn t become public
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
   SettledEventsLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
