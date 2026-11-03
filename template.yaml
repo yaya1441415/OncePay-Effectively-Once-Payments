@@ -15,6 +15,41 @@ Globals:
         NODE_OPTIONS: --enable-source-maps
         LEDGER_TABLE: !Ref LedgerTable
 Resources:
+  NotifyFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [consumers/notify.ts]
+        Target: es2022
+        Format: cjs
+        Minify: false
+        Sourcemap: true
+    Properties:
+      CodeUri: src/
+      Handler: notify.handler
+      Environment:
+        Variables:
+          PROCESSED_EVENTS_TABLE: !Ref ProcessedEventsTable
+      Policies:
+        - Statement:
+          - Effect: Allow
+            Action: [dynamodb:PutItem, dynamodb:GetItem, dynamodb:UpdateItem]
+            Resource: !GetAtt ProcessedEventsTable.Arn
+          - Effect: Allow
+            Action: [kms:Decrypt, kms:DescribeKey]
+            Resource: !GetAtt DataKey.Arn
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub dynamodb.${AWS::Region}.amazonaws.com
+      Events:
+        Settled:
+          Type: EventBridgeRule
+          Properties:
+            EventBusName: !Ref PaymentsEventBus
+            Pattern:
+              source: [payments.transfers]
+              detail-type: [TransferSettled]
   AuditFunction:
     Type: AWS::Serverless::Function
     Metadata:
