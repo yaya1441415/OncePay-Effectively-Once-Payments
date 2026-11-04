@@ -1,0 +1,1 @@
+[{"Detail":"{\"transactionId\":\"bad\",\"eventId\":\"not-a-real-id\",\"status\":\"COMPLETED\",\"settledAt\":\"x\"}","EventBusName":"payments-dev-payments","Source":"payments.transfers","DetailType":"TransferSettled"}]

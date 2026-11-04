@@ -42,6 +42,12 @@ Resources:
             Condition:
               StringEquals:
                 kms:ViaService: !Sub dynamodb.${AWS::Region}.amazonaws.com
+      EventInvokeConfig:
+        MaximumRetryAttempts: 2
+        MaximumEventAgeInSeconds: 3600
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
       Events:
         Settled:
           Type: EventBridgeRule
@@ -50,6 +56,11 @@ Resources:
             Pattern:
               source: [payments.transfers]
               detail-type: [TransferSettled]
+            RetryPolicy:
+              MaximumRetryAttempts: 20
+              MaximumEventAgeInSeconds: 3600
+            DeadLetterConfig:
+              Type: SQS
   AuditFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -77,6 +88,12 @@ Resources:
             Condition:
               StringEquals:
                 kms:ViaService: !Sub s3.${AWS::Region}.amazonaws.com
+      EventInvokeConfig:
+        MaximumRetryAttempts: 2
+        MaximumEventAgeInSeconds: 3600
+        DestinationConfig:
+          OnFailure:
+            Type: SQS
       Events:
         Settled:
           Type: EventBridgeRule
@@ -85,6 +102,11 @@ Resources:
             Pattern:
               source: [payments.transfers]
               detail-type: [TransferSettled]
+            RetryPolicy:
+              MaximumRetryAttempts: 20
+              MaximumEventAgeInSeconds: 3600
+            DeadLetterConfig:
+              Type: SQS
   AuditBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
